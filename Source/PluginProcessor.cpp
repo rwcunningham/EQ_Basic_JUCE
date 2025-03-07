@@ -95,6 +95,13 @@ void Basic_EQ_RobertAudioProcessor::prepareToPlay (double sampleRate, int sample
 {
     // Use this method as the place to do any pre-playback
     // initialisation that you need..
+    juce::dsp::ProcessSpec spec;
+    spec.maximumBlockSize = samplesPerBlock;
+    spec.numChannels = 1;
+    spec.sampleRate = sampleRate;
+
+    leftChain.prepare(spec);
+    rightChain.prepare(spec);
 }
 
 void Basic_EQ_RobertAudioProcessor::releaseResources()
@@ -150,12 +157,21 @@ void Basic_EQ_RobertAudioProcessor::processBlock (juce::AudioBuffer<float>& buff
     // the samples and the outer loop is handling the channels.
     // Alternatively, you can process the samples with the channels
     // interleaved by keeping the same state.
-    for (int channel = 0; channel < totalNumInputChannels; ++channel)
-    {
-        auto* channelData = buffer.getWritePointer (channel);
+    
+    //(deleted some stuff that came with the framework to input tutorial junk)
 
-        // ..do something to the data...
-    }
+    juce::dsp::AudioBlock<float> block(buffer); //"wrap" our buffer in a "block"
+
+    // extract the 2 channels from the block into 2 sperate blocks
+    auto leftBlock = block.getSingleChannelBlock(0);
+    auto rightBlock = block.getSingleChannelBlock(1);
+
+    juce::dsp::ProcessContextReplacing<float> leftContext(leftBlock);
+    juce::dsp::ProcessContextReplacing<float> rightContext(rightBlock);
+
+    leftChain.process(leftContext);
+    rightChain.process(rightContext);
+
 }
 
 //==============================================================================
@@ -166,7 +182,8 @@ bool Basic_EQ_RobertAudioProcessor::hasEditor() const
 
 juce::AudioProcessorEditor* Basic_EQ_RobertAudioProcessor::createEditor()
 {
-    return new Basic_EQ_RobertAudioProcessorEditor (*this);
+    //return new Basic_EQ_RobertAudioProcessorEditor (*this);
+    return new juce::GenericAudioProcessorEditor(*this);
 }
 
 //==============================================================================
@@ -188,4 +205,62 @@ void Basic_EQ_RobertAudioProcessor::setStateInformation (const void* data, int s
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new Basic_EQ_RobertAudioProcessor();
+}
+
+
+// We need to get a NormalizableRange to specify parameters for how our knob will be positioned and move
+// We will use our NormalizableRange to create an AudioParameterFloat, by giving it an ID, a name, our Normalizable range our and a default value
+// We will make a unique pointer to this float, and pass that to our layout.add()
+// layout is a ParameterLayout Object
+// this fumction returns a parameter layout, we will 
+juce::AudioProcessorValueTreeState::ParameterLayout 
+Basic_EQ_RobertAudioProcessor::createParameterLayout()
+{
+    juce::AudioProcessorValueTreeState::ParameterLayout layout;
+    
+    // Layout.add() needs a pointer to an AudioParameterFloat 
+    // We use "make_unique" to give a pointer to the parameter we want to add to our layout
+    layout.add(
+        std::make_unique<juce::AudioParameterFloat> // AudioParameterFloat() constructor takes: ParameterID &parameterID, String &parameterName, <float>normalisableRange normalisableRange , float defaultValue
+        ("LowCut Freq", "LowCut Freq",
+            juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 1.f), // NormalizableRange takes the values: ValueType rangeStart, ValueType rangeEnd, ValueType intervalValue, ValueType skewFactor, bool useSymmetricSkew=false
+            20.f));
+
+    layout.add(
+        std::make_unique<juce::AudioParameterFloat> // AudioParameterFloat() constructor takes: ParameterID &parameterID, String &parameterName, <float>normalisableRange normalisableRange , float defaultValue
+        ("HighCut Freq", "HighcutCut Freq",
+            juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 1.f), // NormalizableRange takes the values: ValueType rangeStart, ValueType rangeEnd, ValueType intervalValue, ValueType skewFactor, bool useSymmetricSkew=false
+            20.f));
+
+    layout.add(
+        std::make_unique<juce::AudioParameterFloat> // AudioParameterFloat() constructor takes: ParameterID &parameterID, String &parameterName, <float>normalisableRange normalisableRange , float defaultValue
+        ("Peak Freq", "Peak Freq",
+            juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 1.f), // NormalizableRange takes the values: ValueType rangeStart, ValueType rangeEnd, ValueType intervalValue, ValueType skewFactor, bool useSymmetricSkew=false
+            750.f));
+
+    layout.add(
+        std::make_unique<juce::AudioParameterFloat> // AudioParameterFloat() constructor takes: ParameterID &parameterID, String &parameterName, <float>normalisableRange normalisableRange , float defaultValue
+        ("Peak Gain", "Peak Gain",
+            juce::NormalisableRange<float>(-24.f, 24.f, .05f, 1.f), // NormalizableRange takes the values: ValueType rangeStart, ValueType rangeEnd, ValueType intervalValue, ValueType skewFactor, bool useSymmetricSkew=false
+            0.f));
+
+    layout.add(
+        std::make_unique<juce::AudioParameterFloat> // AudioParameterFloat() constructor takes: ParameterID &parameterID, String &parameterName, <float>normalisableRange normalisableRange , float defaultValue
+        ("Peak Quality", "Peak Quality",
+            juce::NormalisableRange<float>(-24.f, 24.f, .05f, 1.f), // NormalizableRange takes the values: ValueType rangeStart, ValueType rangeEnd, ValueType intervalValue, ValueType skewFactor, bool useSymmetricSkew=false
+            0.f));
+
+    juce::StringArray stringArray;
+    for (int i = 0; i < 4; i++)
+    {
+        juce::String str;
+        str << (12 + i * 12);
+        str << " db/Oct";
+        stringArray.add(str);
+    }
+
+    layout.add(std::make_unique<juce::AudioParameterChoice>("LowCut Slope", "LowCut Slope", stringArray, 0));
+    layout.add(std::make_unique<juce::AudioParameterChoice>("HighCut Slope", "HighCut Slope", stringArray, 0));
+
+    return layout;
 }
